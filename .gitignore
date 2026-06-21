@@ -1,0 +1,39 @@
+# ── Python ───────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# ── uv / virtualenv ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+uv.lock
+
+# ── Caches / tooling ─────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ── Project data (keep folders, ignore contents) ─────────────────────────
+input/*
+output/*
+!input/.gitkeep
+!output/.gitkeep
+
+# Stray frame extraction / temp artifacts
+frames/
+vaf_*/
+*.wav
+video_review_report.md
+
+# ── OS / editor ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

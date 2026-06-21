@@ -1,0 +1,10 @@
+# Core runtime dependency (vision + synthesis inference via Ollama).
+# Generated to mirror pyproject.toml. For the canonical, uv-managed install use:
+#   uv sync
+ollama>=0.4.0
+
+# Optional: audio transcription with Whisper (heavy — pulls torch, ~GBs).
+# Not installed by default. Enable with either:
+#   uv sync --extra whisper
+# or uncomment the line below and `pip install -r requirements.txt`:
+# openai-whisper>=20231117
