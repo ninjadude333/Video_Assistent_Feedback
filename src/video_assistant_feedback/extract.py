@@ -19,22 +19,52 @@ def _require(tool: str) -> None:
         )
 
 
-def probe_duration(video_path: Path) -> float:
-    """Return the video duration in seconds using ffprobe."""
+def _parse_fps(value: str) -> float:
+    """Parse an ffprobe frame-rate string like '25/1' into a float."""
+    try:
+        num, den = value.split("/")
+        den = float(den)
+        return float(num) / den if den else 0.0
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def probe_video_info(video_path: Path) -> dict:
+    """Return {duration, width, height, fps} for the first video stream via ffprobe."""
     _require("ffprobe")
     result = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-show_entries", "format=duration",
-            "-of", "json", str(video_path),
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate",
+            "-show_entries", "format=duration", "-of", "json", str(video_path),
         ],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
         raise FFmpegError(f"ffprobe failed for {video_path}:\n{result.stderr.strip()}")
     try:
-        return float(json.loads(result.stdout)["format"]["duration"])
-    except (KeyError, ValueError, json.JSONDecodeError) as exc:
-        raise FFmpegError(f"Could not read duration from ffprobe output: {exc}") from exc
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise FFmpegError(f"Could not parse ffprobe output: {exc}") from exc
+
+    duration = float(data.get("format", {}).get("duration", 0) or 0)
+    streams = data.get("streams", [])
+    width = height = 0
+    fps = 0.0
+    if streams:
+        s = streams[0]
+        width = int(s.get("width", 0) or 0)
+        height = int(s.get("height", 0) or 0)
+        fps = _parse_fps(s.get("avg_frame_rate", "0/0")) or _parse_fps(s.get("r_frame_rate", "0/0"))
+    return {"duration": duration, "width": width, "height": height, "fps": fps}
+
+
+def probe_duration(video_path: Path) -> float:
+    """Return the video duration in seconds using ffprobe."""
+    duration = probe_video_info(video_path)["duration"]
+    if duration <= 0:
+        raise FFmpegError(f"Could not read a valid duration from {video_path}.")
+    return duration
 
 
 def _scale_args(max_dim: int) -> list[str]:

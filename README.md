@@ -126,6 +126,7 @@ uv run video-review --interval 4
 | `--max-dim` | `1280` | Cap longest frame edge in px, never upscales (`0` disables) |
 | `--per-frame-tokens` | unlimited | Cap output tokens per frame (faster analysis) |
 | `--fast` | off | Draft preset (same vision model): ~1 frame/3s, 1024px, 250-token cap |
+| `--full` | off | Full-quality preset: native resolution (no downscale), 30 frames, uncapped |
 | `--scene-threshold` | `0.4` | Scene-cut sensitivity, 0–1, lower = more cuts |
 | `--no-scenes` | off | Disable scene timeline + bridge suggestions |
 | `--whisper` | off | Transcribe audio (needs the `whisper` extra) |
@@ -190,6 +191,8 @@ A Markdown report with a metadata header, a scene timeline table, the prose revi
 
 - Generated: 2026-06-21 11:45 UTC
 - Duration: 47.1s
+- Resolution: 854x480
+- Frame rate: 25 fps
 - Scenes: 3
 - Frames analyzed: 18
 ...

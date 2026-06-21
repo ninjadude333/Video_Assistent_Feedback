@@ -75,6 +75,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help=(f"Quick-draft preset (same vision model): ~1 frame/{FAST_FRAME_INTERVAL:g}s, "
                          f"{FAST_MAX_FRAME_DIM}px, {FAST_PER_FRAME_TOKENS}-token cap. "
                          "Explicit flags still override."))
+    p.add_argument("--full", action="store_true",
+                   help=(f"Full-quality preset: native resolution (no downscale), "
+                         f"{DEFAULT_NUM_FRAMES} frames, uncapped output. Explicit flags still override."))
     p.add_argument("--scene-threshold", type=float, default=DEFAULT_SCENE_THRESHOLD,
                    help=f"Scene-cut sensitivity, 0-1, lower=more cuts (default: {DEFAULT_SCENE_THRESHOLD:g}).")
     p.add_argument("--no-scenes", action="store_true",
@@ -102,10 +105,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.interval is not None and args.interval <= 0:
         raise SystemExit("--interval must be > 0")
 
-    # Resolve settings: explicit flags win; otherwise --fast preset or plain defaults.
+    # Resolve settings: explicit flags win; otherwise --fast/--full preset or plain defaults.
     # --fast keeps the SAME vision model (model loading is the bottleneck) and differs
-    # only in resolution + frames sampled + per-frame output cap.
+    # only in resolution + frames sampled + per-frame output cap. --full uses native res.
     fast = args.fast
+    full = args.full
+    if fast and full:
+        raise SystemExit("--fast and --full are mutually exclusive.")
     vision_model = args.model or DEFAULT_VISION_MODEL
     # Reuse the vision model for the text passes unless explicitly overridden — keeps a
     # single model resident (model loading + larger models are the real bottleneck here).
@@ -121,7 +127,12 @@ def main(argv: list[str] | None = None) -> int:
 
     max_dim = args.max_dim
     if max_dim is None:
-        max_dim = FAST_MAX_FRAME_DIM if fast else DEFAULT_MAX_FRAME_DIM
+        if fast:
+            max_dim = FAST_MAX_FRAME_DIM
+        elif full:
+            max_dim = 0  # native resolution, no downscale
+        else:
+            max_dim = DEFAULT_MAX_FRAME_DIM
 
     per_frame_tokens = args.per_frame_tokens
     if per_frame_tokens is None:

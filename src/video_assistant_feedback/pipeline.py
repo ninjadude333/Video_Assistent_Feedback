@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .analyze import analyze_frames, suggest_bridges, synthesize_report
 from .config import Config
-from .extract import extract_frames_at, probe_duration
+from .extract import extract_frames_at, probe_video_info
 from .scenes import Scene, build_scenes, detect_cuts
 from .transcribe import transcribe_audio
 
@@ -145,19 +145,26 @@ def _bridges_md(bridges: list[dict], video_path: Path, output_dir: Path, max_dim
 
 def run(config: Config) -> Path:
     """Run the full pipeline and write the Markdown report. Returns the report path."""
-    duration = probe_duration(config.video_path)
+    info = probe_video_info(config.video_path)
+    duration = info["duration"]
+    if duration <= 0:
+        from .extract import FFmpegError
+        raise FFmpegError(f"Could not read a valid duration from {config.video_path}.")
+    res = f"{info['width']}x{info['height']}" if info["width"] else "unknown"
 
     if config.frame_interval and config.frame_interval > 0:
         sampling = f"every {config.frame_interval:g}s"
     else:
         sampling = f"{config.num_frames} frames"
 
-    print(f"🎬 Video:     {config.video_path} ({duration:.1f}s)")
+    print(f"🎬 Video:     {config.video_path} ({duration:.1f}s, {res}, {info['fps']:.3g}fps)")
     print(f"👁️  Vision:    {config.vision_model}")
     print(f"📝 Synthesis: {config.synthesis_model}")
     print(f"🖼️  Sampling:  {sampling}")
     if config.max_frame_dim:
         print(f"📐 Max dim:   {config.max_frame_dim}px (longest edge, no upscale)")
+    else:
+        print(f"📐 Max dim:   native ({res})")
     print(f"🎞️  Scenes:    {'on (threshold ' + format(config.scene_threshold, 'g') + ')' if config.detect_scenes else 'off'}")
     print(f"🎙️  Whisper:   {'on (' + config.whisper_model + ')' if config.use_whisper else 'off'}\n")
 
@@ -204,7 +211,7 @@ def run(config: Config) -> Path:
             bridges_md = "\n" + _bridges_md(bridges, config.video_path, config.output_path.parent, config.max_frame_dim)
 
         # 8. Assemble + write report
-        header = _header(config, duration, len(frames), len(scenes), bool(transcript))
+        header = _header(config, info, len(frames), len(scenes), bool(transcript))
         parts = [header]
         if scene_table:
             parts.append(scene_table + "\n")
@@ -222,12 +229,15 @@ def run(config: Config) -> Path:
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
-def _header(config: Config, duration: float, n_frames: int, n_scenes: int, has_audio: bool) -> str:
+def _header(config: Config, info: dict, n_frames: int, n_scenes: int, has_audio: bool) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    res = f"{info['width']}x{info['height']}" if info["width"] else "unknown"
     return (
         f"# Video Review: {config.video_path.name}\n\n"
         f"- **Generated:** {now}\n"
-        f"- **Duration:** {duration:.1f}s\n"
+        f"- **Duration:** {info['duration']:.1f}s\n"
+        f"- **Resolution:** {res}\n"
+        f"- **Frame rate:** {info['fps']:.3g} fps\n"
         f"- **Scenes:** {n_scenes}\n"
         f"- **Frames analyzed:** {n_frames}\n"
         f"- **Vision model:** `{config.vision_model}`\n"
