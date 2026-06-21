@@ -37,17 +37,34 @@ def probe_duration(video_path: Path) -> float:
         raise FFmpegError(f"Could not read duration from ffprobe output: {exc}") from exc
 
 
-def extract_frames(video_path: Path, output_dir: Path, n_frames: int) -> tuple[list[Path], float]:
+def extract_frames(
+    video_path: Path,
+    output_dir: Path,
+    n_frames: int,
+    max_dim: int = 0,
+    duration: float | None = None,
+) -> tuple[list[Path], float]:
     """Extract ``n_frames`` evenly spaced JPEG frames.
 
+    ``max_dim`` caps the longest edge (px) without upscaling; 0 disables scaling.
+    ``duration`` may be supplied to skip a redundant ffprobe call.
     Returns the list of extracted frame paths and the video duration in seconds.
     """
     _require("ffmpeg")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    duration = probe_duration(video_path)
+    if duration is None:
+        duration = probe_duration(video_path)
     if duration <= 0:
         raise FFmpegError(f"Video reports non-positive duration ({duration}s): {video_path}")
+
+    # Fit within a max_dim x max_dim box, preserving aspect ratio, never upscaling.
+    scale_args: list[str] = []
+    if max_dim and max_dim > 0:
+        scale_args = [
+            "-vf",
+            f"scale='min({max_dim},iw)':'min({max_dim},ih)':force_original_aspect_ratio=decrease",
+        ]
 
     interval = duration / n_frames
     frame_paths: list[Path] = []
@@ -58,7 +75,7 @@ def extract_frames(video_path: Path, output_dir: Path, n_frames: int) -> tuple[l
         proc = subprocess.run(
             [
                 "ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(video_path),
-                "-frames:v", "1", "-q:v", "2", str(out),
+                "-frames:v", "1", *scale_args, "-q:v", "2", str(out),
             ],
             capture_output=True,
         )

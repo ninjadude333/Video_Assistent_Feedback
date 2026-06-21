@@ -9,22 +9,39 @@ from pathlib import Path
 
 from .analyze import analyze_frames, synthesize_report
 from .config import Config
-from .extract import extract_frames
+from .extract import extract_frames, probe_duration
 from .transcribe import transcribe_audio
 
 
 def run(config: Config) -> Path:
     """Run the full pipeline and write the Markdown report. Returns the report path."""
-    print(f"🎬 Video:     {config.video_path}")
+    duration = probe_duration(config.video_path)
+
+    # Resolve how many frames to sample: interval-based overrides a flat count.
+    if config.frame_interval and config.frame_interval > 0:
+        n_frames = max(1, round(duration / config.frame_interval))
+        sampling = f"every {config.frame_interval:g}s -> {n_frames} frames"
+    else:
+        n_frames = config.num_frames
+        sampling = f"{n_frames} frames"
+
+    print(f"🎬 Video:     {config.video_path} ({duration:.1f}s)")
     print(f"👁️  Vision:    {config.vision_model}")
     print(f"📝 Synthesis: {config.synthesis_model}")
-    print(f"🖼️  Frames:    {config.num_frames}")
+    print(f"🖼️  Frames:    {sampling}")
+    if config.max_frame_dim:
+        print(f"📐 Max dim:   {config.max_frame_dim}px (longest edge, no upscale)")
+    if config.per_frame_tokens:
+        print(f"✂️  Per-frame: {config.per_frame_tokens} token cap")
     print(f"🎙️  Whisper:   {'on (' + config.whisper_model + ')' if config.use_whisper else 'off'}\n")
 
     work_dir = Path(tempfile.mkdtemp(prefix="vaf_"))
     try:
         # 1. Extract frames
-        frame_paths, duration = extract_frames(config.video_path, work_dir / "frames", config.num_frames)
+        frame_paths, duration = extract_frames(
+            config.video_path, work_dir / "frames", n_frames,
+            max_dim=config.max_frame_dim, duration=duration,
+        )
         print(f"✅ Extracted {len(frame_paths)} frames from {duration:.1f}s video\n")
 
         # 2. Optional audio transcription
@@ -37,7 +54,10 @@ def run(config: Config) -> Path:
 
         # 3. Per-frame vision analysis
         print(f"👁️  Running vision analysis on {len(frame_paths)} frames...")
-        analyses = analyze_frames(frame_paths, duration, config.vision_model, config.ollama_host)
+        analyses = analyze_frames(
+            frame_paths, duration, config.vision_model, config.ollama_host,
+            num_predict=config.per_frame_tokens,
+        )
 
         # 4. Synthesize report
         print("\n📝 Synthesizing final report...")

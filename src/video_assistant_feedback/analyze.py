@@ -54,11 +54,16 @@ def analyze_frames(
     duration: float,
     model: str,
     host: str | None = None,
+    num_predict: int = 0,
 ) -> list[dict]:
-    """Run the vision model on each frame; return per-frame analyses."""
+    """Run the vision model on each frame; return per-frame analyses.
+
+    ``num_predict`` caps the output tokens per frame (0 = model default/unlimited).
+    """
     client = _client(host)
     total = len(frame_paths)
     interval = duration / total if total else 0.0
+    options = {"num_predict": num_predict} if num_predict and num_predict > 0 else None
     analyses: list[dict] = []
 
     for i, frame_path in enumerate(frame_paths):
@@ -71,6 +76,7 @@ def analyze_frames(
                 "content": FRAME_PROMPT.format(idx=i + 1, total=total, ts=ts),
                 "images": [str(frame_path)],
             }],
+            options=options,
         )
         analyses.append({
             "frame": i,

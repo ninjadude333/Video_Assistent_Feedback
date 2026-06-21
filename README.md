@@ -97,8 +97,11 @@ uv run video-review input/other.mp4
 # More frames + audio transcription + custom output
 uv run video-review input/clip.mp4 --frames 60 --whisper --output output/review_v3.md
 
-# Use a lighter vision model
-uv run video-review --model qwen3-vl:8b
+# Fast draft: lighter model, coarser sampling, capped per-frame output
+uv run video-review --fast
+
+# Sample one frame every 4 seconds instead of a fixed count
+uv run video-review --interval 4
 ```
 
 ### Options
@@ -112,6 +115,10 @@ uv run video-review --model qwen3-vl:8b
 | `--model` | `qwen3-vl:30b` | Ollama vision model |
 | `--synth-model` | `qwen3.6:35b` | Ollama text model for synthesis |
 | `--frames` | `30` | Frames to sample |
+| `--interval` | — | Sample one frame every N seconds (overrides `--frames`) |
+| `--max-dim` | `1280` | Cap longest frame edge in px, never upscales (`0` disables) |
+| `--per-frame-tokens` | unlimited | Cap output tokens per frame (faster analysis) |
+| `--fast` | off | Draft preset: `qwen3-vl:8b`, ~1 frame/3s, 1024px, 250-token cap |
 | `--whisper` | off | Transcribe audio (needs the `whisper` extra) |
 | `--whisper-model` | `base` | Whisper size: tiny/base/small/medium/large |
 | `--ollama-host` | env `OLLAMA_HOST` | Ollama server URL |
@@ -134,6 +141,15 @@ uv run video-review --whisper
 | 30 | ~1 per 10s | **Default — recommended** |
 | 60 | ~1 per 5s | Detailed artifact hunting |
 | 150 | ~1 per 2s | Near-frame-accurate QC |
+
+### Speed & resolution
+
+The vision pass is the bottleneck (each frame is a separate model call). Levers, fastest payoff first:
+
+- **Fewer frames** — `--interval`/`--frames`. The dominant cost is per-frame model calls.
+- **Cap per-frame output** — `--per-frame-tokens`. Much of the time is the model *writing* the description; capping it helps a lot at low resolution.
+- **`--max-dim`** — only helps for **high-res sources** (1080p/4K). Vision models tokenize by pixel count, so capping the longest edge to ~1024–1280px cuts tokens with negligible QC loss. For footage already ≤720–1080p this is a no-op — and downscaling *below* the source resolution will start erasing the fine artifacts (flicker edges, compositing halos) the QC pass exists to catch, so don't force it lower than needed.
+- **Lighter model** — `--model qwen3-vl:8b` (or `--fast`) for quick drafts; keep `qwen3-vl:30b` for final QC.
 
 ---
 
