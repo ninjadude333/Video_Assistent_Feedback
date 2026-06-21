@@ -112,4 +112,5 @@ Candidate features for video-assistant-feedback, grouped by priority. Each item 
 - [x] LTX-2.3 bridge-clip suggestions with exported full-res conditioning frames
 - [x] Single resident model for all passes (synthesis reuses vision model)
 - [x] Presets & controls: `--fast`, `--full`, `--interval`, `--max-dim`, `--per-frame-tokens`, `--scene-threshold`, `--no-scenes`, `--whisper`
+- [x] Batch mode: `--batch` (whole `input/` folder, per-file error isolation) + `--skip-existing`
 - [x] Dynamic resolution + fps probing in the report header

@@ -109,6 +109,10 @@ uv run video-review --fast
 
 # Sample one frame every 4 seconds instead of a fixed count
 uv run video-review --interval 4
+
+# Batch: process every video in input/ → output/<name>.md each
+uv run video-review --batch
+uv run video-review --batch --fast --skip-existing   # resumable quick pass
 ```
 
 ### Options
@@ -129,6 +133,8 @@ uv run video-review --interval 4
 | `--full` | off | Full-quality preset: native resolution (no downscale), 30 frames, uncapped |
 | `--scene-threshold` | `0.4` | Scene-cut sensitivity, 0–1, lower = more cuts |
 | `--no-scenes` | off | Disable scene timeline + bridge suggestions |
+| `--batch` | off | Process every video in `--input-dir` → one report each (per-file error isolation) |
+| `--skip-existing` | off | In `--batch`, skip videos that already have a report |
 | `--whisper` | off | Transcribe audio (needs the `whisper` extra) |
 | `--whisper-model` | `base` | Whisper size: tiny/base/small/medium/large |
 | `--ollama-host` | env `OLLAMA_HOST` | Ollama server URL |
