@@ -110,15 +110,16 @@ The video is {duration:.1f}s long. Here is its scene timeline:
 Review context (issues + feedback already written):
 {review_context}
 
-Suggest 0-4 bridging or transition clips that would improve flow, pacing, or coverage
-(e.g. smoothing an abrupt cut, adding an establishing or reaction beat, varying shot
-scale). Only suggest bridges that genuinely help — return an empty list if none are needed.
+Suggest AT MOST 2 bridging or transition clips that would improve flow, pacing, or
+coverage (e.g. smoothing an abrupt cut, adding an establishing or reaction beat,
+varying shot scale). Only suggest bridges that genuinely help — return an empty list
+if none are needed. Prefer the single highest-impact bridge over filler.
 
 For each bridge return JSON:
 - title: short name + where it goes (e.g. "Establishing beat before Scene 2").
-- rationale: why it helps.
+- rationale: why it helps (one sentence).
 - ltx_prompt: a concrete LTX-2.3 image-to-video generation prompt describing subject,
-  motion, camera movement, and style. Write it ready to paste into the i2v pipeline.
+  motion, camera movement, and style. Keep it to 1-2 sentences, ready to paste.
 - length_seconds: suggested clip length (typically 1.5-5).
 - first_frame_tc: timecode in SECONDS of an EXISTING frame to condition the FIRST image
   on (usually near the end of the preceding scene), or null.
@@ -221,19 +222,25 @@ def suggest_bridges(
     review_context: str,
     model: str,
     host: str | None = None,
+    num_predict: int = 900,
+    max_bridges: int = 2,
 ) -> list[dict]:
-    """Ask the text model for structured LTX-2.3 bridge-clip suggestions."""
+    """Ask the text model for structured LTX-2.3 bridge-clip suggestions.
+
+    ``num_predict`` bounds generation so this stage can't run to the context limit;
+    ``max_bridges`` caps how many suggestions are returned.
+    """
     client = _client(host)
     data, _ = _chat_json(
         client, model,
         BRIDGE_PROMPT.format(
             duration=duration, scene_summary=scene_summary, review_context=review_context,
         ),
-        schema=BRIDGE_SCHEMA,
+        schema=BRIDGE_SCHEMA, num_predict=num_predict,
     )
     if not data:
         return []
-    bridges = data.get("bridges", [])
+    bridges = data.get("bridges", [])[:max_bridges]
     # Clamp any timecodes into range defensively.
     for b in bridges:
         for key in ("first_frame_tc", "last_frame_tc"):

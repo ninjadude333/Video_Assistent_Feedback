@@ -33,7 +33,9 @@ def _sampling_timestamps(duration: float, scenes: list[Scene], config: Config) -
     else:
         n = max(1, config.num_frames)
     step = duration / n
-    ts = [i * step for i in range(n)]
+    # Center samples within each step (start at step/2) so we never grab the t=0
+    # frame, which is frequently a black fade-in and misrepresents the opening scene.
+    ts = [(i + 0.5) * step for i in range(n)]
 
     covered = {next((sc.index for sc in scenes if sc.start <= t < sc.end), None) for t in ts}
     for sc in scenes:
@@ -64,7 +66,14 @@ def _scene_rows(scenes: list[Scene], analyses: list[dict]) -> list[dict]:
         angles = [a["data"]["camera_angle"] for a in frames if a["data"].get("camera_angle")]
         shot = Counter(shots).most_common(1)[0][0] if shots else "unknown"
         angle = Counter(angles).most_common(1)[0][0] if angles else "—"
-        summary = frames[0]["data"]["description"].strip() if frames else "(no analysis)"
+        # Summarize from the frame nearest the scene midpoint — the most representative
+        # shot, rather than the first frame (which may sit on a cut/fade boundary).
+        if frames:
+            mid = (sc.start + sc.end) / 2
+            rep = min(frames, key=lambda a: abs(a["timestamp"] - mid))
+            summary = rep["data"]["description"].strip()
+        else:
+            summary = "(no analysis)"
         if len(summary) > 120:
             summary = summary[:117].rstrip() + "…"
         rows.append({
