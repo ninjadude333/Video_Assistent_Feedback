@@ -21,8 +21,12 @@ DEFAULT_WHISPER_MODEL = "base"
 # a no-op for footage already below this. 0 disables scaling entirely.
 DEFAULT_MAX_FRAME_DIM = 1280
 
-# --fast preset values: lighter model, coarser sampling, capped output.
-FAST_VISION_MODEL = "qwen3-vl:8b"
+# Scene-cut sensitivity for ffmpeg's scene filter (0-1; lower = more cuts).
+DEFAULT_SCENE_THRESHOLD = 0.4
+
+# --fast preset: SAME vision model (model loading is the real bottleneck —
+# swapping in a smaller model would force an extra load). Fast differs only in
+# resolution + how many frames are sampled, plus a per-frame output cap.
 FAST_FRAME_INTERVAL = 3.0          # one frame every 3 seconds
 FAST_MAX_FRAME_DIM = 1024
 FAST_PER_FRAME_TOKENS = 250
@@ -40,6 +44,8 @@ class Config:
     frame_interval: float | None = None   # seconds between frames; overrides num_frames
     max_frame_dim: int = DEFAULT_MAX_FRAME_DIM
     per_frame_tokens: int = 0             # cap per-frame output tokens; 0 = unlimited
+    detect_scenes: bool = True
+    scene_threshold: float = DEFAULT_SCENE_THRESHOLD
     use_whisper: bool = False
     whisper_model: str = DEFAULT_WHISPER_MODEL
     ollama_host: str | None = None

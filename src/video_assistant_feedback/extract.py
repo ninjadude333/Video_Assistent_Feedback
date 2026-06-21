@@ -37,55 +37,48 @@ def probe_duration(video_path: Path) -> float:
         raise FFmpegError(f"Could not read duration from ffprobe output: {exc}") from exc
 
 
-def extract_frames(
-    video_path: Path,
-    output_dir: Path,
-    n_frames: int,
-    max_dim: int = 0,
-    duration: float | None = None,
-) -> tuple[list[Path], float]:
-    """Extract ``n_frames`` evenly spaced JPEG frames.
-
-    ``max_dim`` caps the longest edge (px) without upscaling; 0 disables scaling.
-    ``duration`` may be supplied to skip a redundant ffprobe call.
-    Returns the list of extracted frame paths and the video duration in seconds.
-    """
-    _require("ffmpeg")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if duration is None:
-        duration = probe_duration(video_path)
-    if duration <= 0:
-        raise FFmpegError(f"Video reports non-positive duration ({duration}s): {video_path}")
-
-    # Fit within a max_dim x max_dim box, preserving aspect ratio, never upscaling.
-    scale_args: list[str] = []
+def _scale_args(max_dim: int) -> list[str]:
+    """ffmpeg -vf args to fit within max_dim x max_dim, preserving aspect, no upscale."""
     if max_dim and max_dim > 0:
-        scale_args = [
+        return [
             "-vf",
             f"scale='min({max_dim},iw)':'min({max_dim},ih)':force_original_aspect_ratio=decrease",
         ]
+    return []
 
-    interval = duration / n_frames
-    frame_paths: list[Path] = []
 
-    for i in range(n_frames):
-        timestamp = i * interval
+def extract_frames_at(
+    video_path: Path,
+    output_dir: Path,
+    timestamps: list[float],
+    max_dim: int = 0,
+) -> list[tuple[float, Path]]:
+    """Extract one JPEG per timestamp.
+
+    ``max_dim`` caps the longest edge (px) without upscaling; 0 disables scaling.
+    Returns a list of (timestamp, frame_path) for frames that were successfully written.
+    """
+    _require("ffmpeg")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scale = _scale_args(max_dim)
+
+    extracted: list[tuple[float, Path]] = []
+    for i, ts in enumerate(timestamps):
         out = output_dir / f"frame_{i:04d}.jpg"
         proc = subprocess.run(
             [
-                "ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(video_path),
-                "-frames:v", "1", *scale_args, "-q:v", "2", str(out),
+                "ffmpeg", "-y", "-ss", f"{ts:.3f}", "-i", str(video_path),
+                "-frames:v", "1", *scale, "-q:v", "2", str(out),
             ],
             capture_output=True,
         )
         if proc.returncode == 0 and out.exists():
-            frame_paths.append(out)
+            extracted.append((ts, out))
 
-    if not frame_paths:
+    if not extracted:
         raise FFmpegError(f"No frames were extracted from {video_path}.")
 
-    return frame_paths, duration
+    return extracted
 
 
 def extract_audio(video_path: Path, audio_path: Path) -> bool:

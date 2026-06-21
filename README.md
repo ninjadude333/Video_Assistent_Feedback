@@ -1,6 +1,6 @@
 # video-assistant-feedback
 
-A local, fully offline pipeline for reviewing **video of any style** — AI-generated animation, live-action, motion graphics — using Ollama vision models. Drop a video in `input/`, run one command, and get a detailed Markdown report in `output/` covering synopsis, technical issues (timestamped + prioritized), and directorial feedback.
+A local, fully offline pipeline for reviewing **video of any style** — AI-generated animation, live-action, motion graphics — using Ollama vision models. Drop a video in `input/`, run one command, and get a detailed Markdown report in `output/` covering a **scene timeline**, synopsis, technical issues (timestamped + prioritized), directorial feedback, and **LTX-2.3 bridge-clip suggestions**.
 
 Built to run on a DGX1 alongside a local Ollama install.
 
@@ -30,22 +30,29 @@ Two-pass design for coherent output:
 ```
 input/video.mp4
     │
-    ├─► ffmpeg ─────────────────► N evenly-spaced JPEG frames (default 30)
+    ├─► ffmpeg scene detect ────► scene cut timestamps → scene segments
+    │
+    ├─► ffmpeg ─────────────────► frames sampled across the timeline
+    │                               (≥1 per scene; downscaled if --max-dim)
     │
     ├─► ffmpeg + Whisper ───────► audio transcript (optional, --whisper)
     │
-    ├─► Ollama vision model ────► per-frame analysis (description + issues + tone)
-    │   (qwen3-vl:30b)
+    ├─► Ollama vision model ────► structured per-frame analysis (JSON)
+    │   (qwen3-vl:30b)              shot type, angle, subjects, mood, issues
     │
-    └─► Ollama text model ──────► synthesized Markdown report
-        (qwen3.6:35b)               1. Synopsis
-                                    2. Issues to Fix (timestamped, prioritized)
-                                    3. General Feedback
+    ├─► Ollama text model ──────► synthesized Markdown review
+    │   (qwen3.6:35b)               1. Synopsis  2. Issues  3. Feedback
+    │
+    └─► Ollama text model ──────► LTX-2.3 bridge-clip suggestions
+        (qwen3.6:35b)               4. Bridges (prompt + length + frame TCs)
+                                       → conditioning frames exported to output/
         → output/<video>.md
 ```
 
-1. **Frame analysis pass** — each frame gets a short, style-agnostic prompt (visual description, quality-issue detection, mood). Keeping it scoped reduces hallucination.
-2. **Synthesis pass** — all per-frame analyses (plus transcript, if any) are concatenated into one large-context text prompt. A stronger text model writes the final report.
+1. **Scene detection** — ffmpeg's scene filter finds hard cuts; the timeline is split into scene segments.
+2. **Structured frame analysis** — each sampled frame is classified into JSON (shot type, camera angle, subjects, mood, issues w/ severity). This builds a deterministic, verifiable **scene reference table**.
+3. **Synthesis pass** — the structured analyses (plus transcript, if any) feed a text model that writes the prose review.
+4. **Bridge pass** — the model proposes optional transition clips for an **LTX-2.3 image-to-video** workflow: a ready-to-paste i2v prompt, clip length, and the timecodes of existing frames to use as first/last conditioning images. Those frames are exported full-res to `output/`.
 
 ---
 
@@ -118,7 +125,9 @@ uv run video-review --interval 4
 | `--interval` | — | Sample one frame every N seconds (overrides `--frames`) |
 | `--max-dim` | `1280` | Cap longest frame edge in px, never upscales (`0` disables) |
 | `--per-frame-tokens` | unlimited | Cap output tokens per frame (faster analysis) |
-| `--fast` | off | Draft preset: `qwen3-vl:8b`, ~1 frame/3s, 1024px, 250-token cap |
+| `--fast` | off | Draft preset (same vision model): ~1 frame/3s, 1024px, 250-token cap |
+| `--scene-threshold` | `0.4` | Scene-cut sensitivity, 0–1, lower = more cuts |
+| `--no-scenes` | off | Disable scene timeline + bridge suggestions |
 | `--whisper` | off | Transcribe audio (needs the `whisper` extra) |
 | `--whisper-model` | `base` | Whisper size: tiny/base/small/medium/large |
 | `--ollama-host` | env `OLLAMA_HOST` | Ollama server URL |
@@ -149,7 +158,7 @@ The vision pass is the bottleneck (each frame is a separate model call). Levers,
 - **Fewer frames** — `--interval`/`--frames`. The dominant cost is per-frame model calls.
 - **Cap per-frame output** — `--per-frame-tokens`. Much of the time is the model *writing* the description; capping it helps a lot at low resolution.
 - **`--max-dim`** — only helps for **high-res sources** (1080p/4K). Vision models tokenize by pixel count, so capping the longest edge to ~1024–1280px cuts tokens with negligible QC loss. For footage already ≤720–1080p this is a no-op — and downscaling *below* the source resolution will start erasing the fine artifacts (flicker edges, compositing halos) the QC pass exists to catch, so don't force it lower than needed.
-- **Lighter model** — `--model qwen3-vl:8b` (or `--fast`) for quick drafts; keep `qwen3-vl:30b` for final QC.
+- **Lighter model** — `--model qwen3-vl:8b` for quick drafts; keep `qwen3-vl:30b` for final QC. Note: switching models forces an Ollama model load, which on this box is itself a large cost — so `--fast` deliberately keeps the same vision model and economizes on resolution + frame count instead.
 
 ---
 
@@ -174,16 +183,22 @@ video-assistant-feedback/
 
 ## Output
 
-A Markdown report with a metadata header followed by three sections:
+A Markdown report with a metadata header, a scene timeline table, the prose review, and bridge suggestions:
 
 ```markdown
 # Video Review: my_clip.mp4
 
 - Generated: 2026-06-21 11:45 UTC
-- Duration: 300.0s
-- Frames analyzed: 30
-- Vision model: qwen3-vl:30b
+- Duration: 47.1s
+- Scenes: 3
+- Frames analyzed: 18
 ...
+
+## Scene Timeline
+| # | Start | Dur  | Shot   | Angle      | Summary                       |
+|---|-------|------|--------|------------|-------------------------------|
+| 1 | 0:00  | 12.3s| medium | eye-level  | Two boys walk along a side... |
+| 2 | 0:12  | 18.0s| wide   | low-angle  | Dog runs across the lawn...   |
 
 ## 1. SYNOPSIS
 ...3-6 sentence description of content, visual style, tone...
@@ -193,7 +208,17 @@ A Markdown report with a metadata header followed by three sections:
 
 ## 3. GENERAL FEEDBACK
 ...what works, what doesn't, one key recommendation...
+
+## 4. Bridge / Transition Suggestions
+### Bridge 1 — Establishing beat before Scene 2
+- Why: smooths the abrupt cut from sidewalk to lawn.
+- Suggested length: 3.0s
+- LTX-2.3 i2v prompt: "Slow push-in on a sunlit suburban lawn, dog trotting..."
+- First conditioning frame: 0:11.5 → output/my_clip_bridge1_first_11.5s.jpg
+- Last conditioning frame: 0:12.5 → output/my_clip_bridge1_last_12.5s.jpg
 ```
+
+The **scene timeline** is built from the model's structured output, so it's a quick reference for verifying the model read each shot correctly. The exported bridge frames are full-resolution (ignoring `--max-dim`) so they're usable directly as i2v conditioning images.
 
 ---
 
@@ -207,7 +232,9 @@ A Markdown report with a metadata header followed by three sections:
 
 ## Roadmap
 
-- [ ] Scene-cut-aware frame extraction (ffmpeg scene detection) for better coverage at cuts
+- [x] Scene-cut-aware frame extraction (ffmpeg scene detection)
+- [x] Scene timeline table (shot type, angle, duration) for verification
+- [x] LTX-2.3 bridge-clip suggestions with exported conditioning frames
 - [ ] Per-scene sub-reports
 - [ ] HTML report with embedded frame thumbnails per issue
 - [ ] Comparison mode (`--compare v1.mp4 v2.mp4`) to diff two renders

@@ -9,13 +9,13 @@ from pathlib import Path
 from .config import (
     DEFAULT_MAX_FRAME_DIM,
     DEFAULT_NUM_FRAMES,
+    DEFAULT_SCENE_THRESHOLD,
     DEFAULT_SYNTHESIS_MODEL,
     DEFAULT_VISION_MODEL,
     DEFAULT_WHISPER_MODEL,
     FAST_FRAME_INTERVAL,
     FAST_MAX_FRAME_DIM,
     FAST_PER_FRAME_TOKENS,
-    FAST_VISION_MODEL,
     VIDEO_EXTENSIONS,
     Config,
 )
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", type=Path, default=None,
                    help="Explicit report path (overrides --output-dir).")
     p.add_argument("--model", default=None,
-                   help=f"Ollama vision model (default: {DEFAULT_VISION_MODEL}, or {FAST_VISION_MODEL} with --fast).")
+                   help=f"Ollama vision model (default: {DEFAULT_VISION_MODEL}).")
     p.add_argument("--synth-model", default=DEFAULT_SYNTHESIS_MODEL,
                    help=f"Ollama text model for synthesis (default: {DEFAULT_SYNTHESIS_MODEL}).")
     p.add_argument("--frames", type=int, default=None,
@@ -72,9 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--per-frame-tokens", type=int, default=None,
                    help="Cap output tokens per frame for faster analysis (default: unlimited).")
     p.add_argument("--fast", action="store_true",
-                   help=(f"Quick-draft preset: {FAST_VISION_MODEL}, ~1 frame/{FAST_FRAME_INTERVAL:g}s, "
+                   help=(f"Quick-draft preset (same vision model): ~1 frame/{FAST_FRAME_INTERVAL:g}s, "
                          f"{FAST_MAX_FRAME_DIM}px, {FAST_PER_FRAME_TOKENS}-token cap. "
                          "Explicit flags still override."))
+    p.add_argument("--scene-threshold", type=float, default=DEFAULT_SCENE_THRESHOLD,
+                   help=f"Scene-cut sensitivity, 0-1, lower=more cuts (default: {DEFAULT_SCENE_THRESHOLD:g}).")
+    p.add_argument("--no-scenes", action="store_true",
+                   help="Disable scene detection, the scene timeline table, and bridge suggestions.")
     p.add_argument("--whisper", action="store_true",
                    help="Transcribe the audio track with Whisper (requires the 'whisper' extra).")
     p.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL,
@@ -99,8 +103,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--interval must be > 0")
 
     # Resolve settings: explicit flags win; otherwise --fast preset or plain defaults.
+    # --fast keeps the SAME vision model (model loading is the bottleneck) and differs
+    # only in resolution + frames sampled + per-frame output cap.
     fast = args.fast
-    vision_model = args.model or (FAST_VISION_MODEL if fast else DEFAULT_VISION_MODEL)
+    vision_model = args.model or DEFAULT_VISION_MODEL
 
     frame_interval = args.interval
     num_frames = args.frames
@@ -129,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
         frame_interval=frame_interval,
         max_frame_dim=max_dim,
         per_frame_tokens=per_frame_tokens,
+        detect_scenes=not args.no_scenes,
+        scene_threshold=args.scene_threshold,
         use_whisper=args.whisper,
         whisper_model=args.whisper_model,
         ollama_host=args.ollama_host,
