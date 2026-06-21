@@ -9,10 +9,13 @@ from pathlib import Path
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".mpg", ".mpeg"}
 
 # Defaults chosen for the local DGX1 Ollama install.
-#   vision   -> best locally available vision-language model
-#   synthesis-> strongest locally available text model for writing the report
+#   vision    -> best locally available vision-language model
+#   synthesis -> reuses the vision model by default (see cli). On these V100s a
+#                separate larger text model (e.g. qwen3.6:35b) generates the report
+#                very slowly AND forces a second model load, so keeping one model
+#                resident is much faster. Override with --synth-model for quality.
 DEFAULT_VISION_MODEL = "qwen3-vl:30b"
-DEFAULT_SYNTHESIS_MODEL = "qwen3.6:35b"
+DEFAULT_SYNTHESIS_MODEL = "qwen3.6:35b"  # opt-in via --synth-model, not the default
 DEFAULT_NUM_FRAMES = 30
 DEFAULT_WHISPER_MODEL = "base"
 

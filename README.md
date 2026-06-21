@@ -41,10 +41,10 @@ input/video.mp4
     │   (qwen3-vl:30b)              shot type, angle, subjects, mood, issues
     │
     ├─► Ollama text model ──────► synthesized Markdown review
-    │   (qwen3.6:35b)               1. Synopsis  2. Issues  3. Feedback
+    │   (reuses qwen3-vl:30b)       1. Synopsis  2. Issues  3. Feedback
     │
     └─► Ollama text model ──────► LTX-2.3 bridge-clip suggestions
-        (qwen3.6:35b)               4. Bridges (prompt + length + frame TCs)
+        (reuses qwen3-vl:30b)       4. Bridges (prompt + length + frame TCs)
                                        → conditioning frames exported to output/
         → output/<video>.md
 ```
@@ -63,7 +63,7 @@ Defaults target the locally available Ollama models on the DGX1:
 | Role | Default | Notes |
 |---|---|---|
 | Vision | `qwen3-vl:30b` | Best local vision-language model (~19 GB). Override with `--model`. |
-| Synthesis | `qwen3.6:35b` | Strongest local text model for report writing. Override with `--synth-model`. |
+| Synthesis | *reuses `--model`* | Same model writes the report + bridges, so only one model stays loaded. On these V100s a separate 35B text pass is very slow and forces a second model load. Pass `--synth-model qwen3.6:35b` if you want max report quality and can spare the time. |
 
 Lighter vision options if you need faster iteration: `qwen3-vl:8b`, `qwen2.5vl:7b`.
 
@@ -120,7 +120,7 @@ uv run video-review --interval 4
 | `--output-dir` | `output` | Where to write the report |
 | `--output` | `output/<video>.md` | Explicit report path |
 | `--model` | `qwen3-vl:30b` | Ollama vision model |
-| `--synth-model` | `qwen3.6:35b` | Ollama text model for synthesis |
+| `--synth-model` | reuses `--model` | Text model for synthesis + bridges |
 | `--frames` | `30` | Frames to sample |
 | `--interval` | — | Sample one frame every N seconds (overrides `--frames`) |
 | `--max-dim` | `1280` | Cap longest frame edge in px, never upscales (`0` disables) |

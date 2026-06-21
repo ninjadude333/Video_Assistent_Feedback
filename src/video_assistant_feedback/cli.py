@@ -10,7 +10,6 @@ from .config import (
     DEFAULT_MAX_FRAME_DIM,
     DEFAULT_NUM_FRAMES,
     DEFAULT_SCENE_THRESHOLD,
-    DEFAULT_SYNTHESIS_MODEL,
     DEFAULT_VISION_MODEL,
     DEFAULT_WHISPER_MODEL,
     FAST_FRAME_INTERVAL,
@@ -61,8 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Explicit report path (overrides --output-dir).")
     p.add_argument("--model", default=None,
                    help=f"Ollama vision model (default: {DEFAULT_VISION_MODEL}).")
-    p.add_argument("--synth-model", default=DEFAULT_SYNTHESIS_MODEL,
-                   help=f"Ollama text model for synthesis (default: {DEFAULT_SYNTHESIS_MODEL}).")
+    p.add_argument("--synth-model", default=None,
+                   help="Ollama text model for synthesis + bridges (default: reuse --model, "
+                        "so only one model stays loaded; e.g. pass qwen3.6:35b for higher quality).")
     p.add_argument("--frames", type=int, default=None,
                    help=f"Number of frames to sample (default: {DEFAULT_NUM_FRAMES}).")
     p.add_argument("--interval", type=float, default=None,
@@ -107,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
     # only in resolution + frames sampled + per-frame output cap.
     fast = args.fast
     vision_model = args.model or DEFAULT_VISION_MODEL
+    # Reuse the vision model for the text passes unless explicitly overridden — keeps a
+    # single model resident (model loading + larger models are the real bottleneck here).
+    synthesis_model = args.synth_model or vision_model
 
     frame_interval = args.interval
     num_frames = args.frames
@@ -130,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         video_path=video_path,
         output_path=output_path,
         vision_model=vision_model,
-        synthesis_model=args.synth_model,
+        synthesis_model=synthesis_model,
         num_frames=num_frames or DEFAULT_NUM_FRAMES,
         frame_interval=frame_interval,
         max_frame_dim=max_dim,
